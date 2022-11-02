@@ -29,15 +29,14 @@ import (
 // NewTerminalSession 该方法用于升级 http 协议至 websocket，并new一个 TerminalSession 类型的对象返回
 func NewTerminalSession(w http.ResponseWriter, r *http.Request) (*TerminalSession, error) {
 	// 初始化 Upgrader 类型的对象，用于http协议升级为 websocket 协议
-	upgrader := func() websocket.Upgrader {
-		upgrader := websocket.Upgrader{}
-		upgrader.HandshakeTimeout = time.Second * 2
-		upgrader.CheckOrigin = func(r *http.Request) bool {
+	upgrader := &websocket.Upgrader{
+		HandshakeTimeout: time.Second * 2,
+		// 检测请求来源
+		CheckOrigin: func(r *http.Request) bool {
 			return true
-		}
-		return upgrader
-	}()
-
+		},
+		Subprotocols: []string{r.Header.Get("Sec-WebSocket-Protocol")},
+	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return nil, err
@@ -47,7 +46,7 @@ func NewTerminalSession(w http.ResponseWriter, r *http.Request) (*TerminalSessio
 		sizeChan: make(chan remotecommand.TerminalSize),
 		doneChan: make(chan struct{}),
 	}
-
+	//w.Header().Set("Sec-WebSocket-Protocol", "eyJhbGciOddiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NjczNzQzMjIsIm5iZiI6MTY2NzM1MjcyMiwiaWF0IjoxNjY3MzUyNzIyLCJpZCI6MjEyMjA4MjEsIm5hbWUiOiJhZG1pbiIsInJvbGUiOiIifQ.ub1vYaRL5WwupL4Htsd5KcVaiBWq8YMpak8g7wzF8SY")
 	return session, nil
 }
 
