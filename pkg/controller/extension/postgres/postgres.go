@@ -30,6 +30,15 @@ type Interface interface {
 	ListSchemas(context.Context, int64, string) ([]types.PostgresSchema, error)
 	ListTables(context.Context, int64, string, string) ([]types.PostgresTable, error)
 	ExecuteSQL(context.Context, int64, *types.PostgresQueryRequest) (*types.PostgresQueryResult, error)
+	ExecuteBatchSQL(context.Context, int64, *types.PostgresBatchRequest) (*types.PostgresBatchResult, error)
+	GetTableDetail(context.Context, int64, string, string, string) (*types.PostgresTableDetail, error)
+	CreateTable(context.Context, int64, *types.PostgresCreateTableRequest) error
+	AlterTable(context.Context, int64, *types.PostgresAlterTableRequest) error
+	ListUsers(context.Context, int64) ([]types.PostgresUser, error)
+	CreateUser(context.Context, int64, *types.PostgresCreateUserRequest) error
+	DeleteUser(context.Context, int64, string) error
+	GrantRole(context.Context, int64, *types.PostgresGrantRequest) error
+	ListSlowQueries(context.Context, int64, int64, int64, string, string) (*types.PostgresSlowQueryList, error)
 	ListSessions(context.Context, int64) ([]types.PostgresSession, error)
 	CancelSession(context.Context, int64, int64, bool) error
 }
@@ -293,44 +302,6 @@ func (c *controller) ListTables(ctx context.Context, id int64, dbn, schema strin
 		out = append(out, x)
 	}
 	return out, nil
-}
-func (c *controller) ExecuteSQL(ctx context.Context, id int64, q *types.PostgresQueryRequest) (*types.PostgresQueryResult, error) {
-	db, _, e := c.conn(ctx, id)
-	if e != nil {
-		return nil, e
-	}
-	if q.Limit <= 0 || q.Limit > 1000 {
-		q.Limit = 1000
-	}
-	st := time.Now()
-	rows, e := db.QueryContext(ctx, q.SQL)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	cols, _ := rows.Columns()
-	r := &types.PostgresQueryResult{Columns: cols, Statement: "select", Duration: time.Since(st).Milliseconds()}
-	for rows.Next() {
-		vals := make([]interface{}, len(cols))
-		ptr := make([]interface{}, len(cols))
-		for i := range vals {
-			ptr[i] = &vals[i]
-		}
-		if e = rows.Scan(ptr...); e != nil {
-			return nil, e
-		}
-		for i, v := range vals {
-			if b, ok := v.([]byte); ok {
-				vals[i] = string(b)
-			}
-		}
-		r.Rows = append(r.Rows, vals)
-		if int64(len(r.Rows)) >= q.Limit {
-			r.Truncated = true
-			break
-		}
-	}
-	return r, nil
 }
 func (c *controller) ListSessions(ctx context.Context, id int64) ([]types.PostgresSession, error) {
 	db, _, e := c.conn(ctx, id)
