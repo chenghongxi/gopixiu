@@ -30,6 +30,8 @@ import (
 
 	"k8s.io/klog/v2"
 
+	"github.com/gin-gonic/gin"
+
 	apierrors "github.com/caoyingjunz/pixiu/api/server/errors"
 	"github.com/caoyingjunz/pixiu/cmd/app/config"
 	emailcontroller "github.com/caoyingjunz/pixiu/pkg/controller/email"
@@ -53,8 +55,13 @@ type Getter interface {
 }
 
 type Interface interface {
-	SendCode(ctx context.Context, req *types.SendRegistrationCodeRequest, requestIP string) (*types.RegistrationCodeResponse, error)
+	SendVerificationCode(ctx context.Context, req *types.SendRegistrationCodeRequest, requestIP string) (*types.RegistrationCodeResponse, error)
 	Register(ctx context.Context, req *types.RegisterUserRequest) error
+	Login(ctx context.Context, req *types.LoginRequest) (*types.LoginResponse, error)
+	Logout(ctx *gin.Context) error
+	Refresh(ctx context.Context) error
+	ValidateLoginToken(ctx context.Context, userId int64, token string) (bool, error)
+	GetLoginToken(ctx context.Context, userId int64) (string, error)
 }
 
 type controller struct {
@@ -77,7 +84,7 @@ func (c *controller) preSendCode(ctx context.Context) error {
 	return nil
 }
 
-func (c *controller) SendCode(ctx context.Context, req *types.SendRegistrationCodeRequest, requestIP string) (*types.RegistrationCodeResponse, error) {
+func (c *controller) SendVerificationCode(ctx context.Context, req *types.SendRegistrationCodeRequest, requestIP string) (*types.RegistrationCodeResponse, error) {
 	if err := c.preSendCode(ctx); err != nil {
 		return nil, err
 	}

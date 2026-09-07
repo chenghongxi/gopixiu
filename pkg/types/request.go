@@ -154,9 +154,19 @@ type (
 		CreateEmailRequest `form:",inline"`
 	}
 
-	// TestSendEmailRequest 测试邮件发送请求（验证指定 SMTP 配置是否可用）。
+	// TestSendEmailRequest 测试邮件发送请求。
+	// 按已保存配置 ID 发送（/emails/:id/test）时仅使用 To；
+	// 直接传参发送（/emails/test，新建前验证，不落库）时使用内联 SMTP 配置字段，
+	// smtp_host/smtp_port/from_email 的必填校验在 controller 内完成。
 	TestSendEmailRequest struct {
-		To string `json:"to" binding:"required,email"`
+		To         string `json:"to" binding:"required,email"`
+		SmtpHost   string `json:"smtp_host"`
+		SmtpPort   int    `json:"smtp_port"`
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		FromEmail  string `json:"from_email"`
+		FromName   string `json:"from_name"`
+		Encryption string `json:"encryption"`
 	}
 
 	CreateProviderRequest struct {
