@@ -40,7 +40,7 @@ var allowedPrivileges = map[string]struct{}{
 }
 
 var (
-	pgIdentPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_$]{0,62}$`)
+	pgIdentPattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_$]{0,62}$`)
 )
 
 // ── SQL 语句解析 ─────────────────────────────────────────────
@@ -502,13 +502,10 @@ func (c *controller) GetTableDetail(ctx context.Context, id int64, database, sch
 
 	detail := &types.PostgresTableDetail{Name: table, Schema: schema}
 
-	// 表体积与行数估算
+	// 表体积与行数估算（顺带取 relkind，供前端区分基表/视图/序列）
 	_ = dbConn.QueryRowContext(ctx,
-		"select coalesce(c.reltuples,0)::bigint, pg_total_relation_size(c.oid) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname=$1 and c.relname=$2",
-		schema, table).Scan(&detail.Rows, &detail.SizeBytes)
-
-	// 生成 DDL：通过 information_schema + pg_catalog 重建
-	detail.DDL = buildPgTableDDL(ctx, dbConn, schema, table)
+		"select coalesce(c.reltuples,0)::bigint, pg_total_relation_size(c.oid), c.relkind from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname=$1 and c.relname=$2",
+		schema, table).Scan(&detail.Rows, &detail.SizeBytes, &detail.RelKind)
 
 	// 列信息（使用 pg_catalog 避免 information_schema 域类型问题）
 	colRows, err := dbConn.QueryContext(ctx, `
@@ -574,6 +571,9 @@ WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped`
 		col.Comment = colComments[col.Name]
 		detail.Columns = append(detail.Columns, col)
 	}
+
+	// 基于已获取的列信息重建 DDL，避免重复查询 pg_attribute/pg_index
+	detail.DDL = buildPgTableDDL(schema, table, detail.Columns)
 
 	// 索引信息
 	idxRows, err := dbConn.QueryContext(ctx, `
@@ -737,69 +737,48 @@ func buildPgFullType(dataType, udtName string, charLen, numPrec int) string {
 	return dataType
 }
 
-func buildPgTableDDL(ctx context.Context, db *sql.DB, schema, table string) string {
+// buildPgTableDDL 基于已查询的列信息重建 CREATE TABLE 语句，避免重复查询目录表
+func buildPgTableDDL(schema, table string, cols []types.PostgresColumn) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("CREATE TABLE %s.%s (\n", pgQuoteIdent(schema), pgQuoteIdent(table)))
 
-	// 列定义（使用 pg_catalog 避免 information_schema 域类型问题）
-	colRows, err := db.QueryContext(ctx, `
-SELECT a.attname,
-       format_type(a.atttypid, a.atttypmod),
-       a.attnotnull,
-       coalesce(pg_get_expr(d.adbin, d.adrelid), '')
-FROM pg_attribute a
-JOIN pg_class c ON c.oid = a.attrelid
-JOIN pg_namespace n ON n.oid = c.relnamespace
-LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
-WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
-ORDER BY a.attnum`, schema, table)
-	if err != nil {
-		return "-- failed to generate DDL: " + err.Error()
-	}
-	defer colRows.Close()
-
-	var colDefs []string
-	for colRows.Next() {
-		var name, fullType string
-		var notNull bool
-		var defaultVal string
-		_ = colRows.Scan(&name, &fullType, &notNull, &defaultVal)
-
-		def := fmt.Sprintf("    %s %s", pgQuoteIdent(name), fullType)
-		if notNull {
+	var colDefs, pkCols []string
+	for _, col := range cols {
+		def := fmt.Sprintf("    %s %s", pgQuoteIdent(col.Name), col.FullType)
+		if !col.Nullable {
 			def += " NOT NULL"
 		}
-		if defaultVal != "" {
-			def += " DEFAULT " + defaultVal
+		if col.Default != "" {
+			def += " DEFAULT " + col.Default
 		}
 		colDefs = append(colDefs, def)
+		if col.IsPrimaryKey {
+			pkCols = append(pkCols, pgQuoteIdent(col.Name))
+		}
 	}
-
-	// 主键约束
-	pkRows, err := db.QueryContext(ctx, `
-SELECT a.attname
-FROM pg_index ix
-JOIN pg_attribute a ON a.attrelid = ix.indrelid AND a.attnum = ANY(ix.indkey)
-JOIN pg_class c ON c.oid = ix.indrelid
-JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE n.nspname = $1 AND c.relname = $2 AND ix.indisprimary
-ORDER BY a.attnum`, schema, table)
-	if err == nil {
-		defer pkRows.Close()
-		var pkCols []string
-		for pkRows.Next() {
-			var col string
-			_ = pkRows.Scan(&col)
-			pkCols = append(pkCols, pgQuoteIdent(col))
-		}
-		if len(pkCols) > 0 {
-			colDefs = append(colDefs, "    PRIMARY KEY ("+strings.Join(pkCols, ", ")+")")
-		}
+	if len(pkCols) > 0 {
+		colDefs = append(colDefs, "    PRIMARY KEY ("+strings.Join(pkCols, ", ")+")")
 	}
 
 	sb.WriteString(strings.Join(colDefs, ",\n"))
 	sb.WriteString("\n)")
 	return sb.String()
+}
+
+// execDDL 在受控超时内执行写语句并统一包装错误；权限与语句校验由调用方负责
+func (c *controller) execDDL(ctx context.Context, id int64, sqlText string) error {
+	dbConn, _, err := c.conn(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := pgOpContext(ctx)
+	defer cancel()
+
+	if _, err := dbConn.ExecContext(ctx, sqlText); err != nil {
+		return wrapPgErr(err)
+	}
+	return nil
 }
 
 func (c *controller) CreateTable(ctx context.Context, id int64, req *types.PostgresCreateTableRequest) error {
@@ -812,19 +791,7 @@ func (c *controller) CreateTable(ctx context.Context, id int64, req *types.Postg
 	if !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(req.SQL)), "CREATE") {
 		return apierrors.NewError(fmt.Errorf("only CREATE TABLE statements are allowed"), http.StatusBadRequest)
 	}
-
-	dbConn, _, err := c.conn(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := pgOpContext(ctx)
-	defer cancel()
-
-	if _, err := dbConn.ExecContext(ctx, req.SQL); err != nil {
-		return wrapPgErr(err)
-	}
-	return nil
+	return c.execDDL(ctx, id, req.SQL)
 }
 
 func (c *controller) AlterTable(ctx context.Context, id int64, req *types.PostgresAlterTableRequest) error {
@@ -838,19 +805,7 @@ func (c *controller) AlterTable(ctx context.Context, id int64, req *types.Postgr
 	if !strings.HasPrefix(upper, "ALTER") && !strings.HasPrefix(upper, "CREATE INDEX") && !strings.HasPrefix(upper, "DROP INDEX") {
 		return apierrors.NewError(fmt.Errorf("only ALTER TABLE / CREATE INDEX / DROP INDEX statements are allowed"), http.StatusBadRequest)
 	}
-
-	dbConn, _, err := c.conn(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := pgOpContext(ctx)
-	defer cancel()
-
-	if _, err := dbConn.ExecContext(ctx, req.SQL); err != nil {
-		return wrapPgErr(err)
-	}
-	return nil
+	return c.execDDL(ctx, id, req.SQL)
 }
 
 // ── 用户管理 ─────────────────────────────────────────────────
@@ -864,26 +819,20 @@ func (c *controller) ListUsers(ctx context.Context, id int64) ([]types.PostgresU
 	ctx, cancel := pgOpContext(ctx)
 	defer cancel()
 
-	rows, err := dbConn.QueryContext(ctx, `
+	users, err := pgQuerySlice(ctx, dbConn, `
 SELECT rolname, rolsuper, rolcreatedb, rolcreaterole, rolcanlogin, rolreplication,
        rolconnlimit, coalesce(rolvaliduntil::text, '')
 FROM pg_roles
 WHERE rolname NOT LIKE 'pg_%'
-ORDER BY rolname`)
+ORDER BY rolname`, func(r *sql.Rows) (types.PostgresUser, error) {
+		var u types.PostgresUser
+		err := r.Scan(&u.Name, &u.SuperUser, &u.CreateDB, &u.CreateRole, &u.CanLogin, &u.Replication, &u.ConnLimit, &u.ValidUntil)
+		return u, err
+	})
 	if err != nil {
 		return nil, wrapPgErr(err)
 	}
-	defer rows.Close()
-
-	users := make([]types.PostgresUser, 0)
-	for rows.Next() {
-		var u types.PostgresUser
-		if err := rows.Scan(&u.Name, &u.SuperUser, &u.CreateDB, &u.CreateRole, &u.CanLogin, &u.Replication, &u.ConnLimit, &u.ValidUntil); err != nil {
-			return nil, wrapPgErr(err)
-		}
-		users = append(users, u)
-	}
-	return users, rows.Err()
+	return users, nil
 }
 
 func (c *controller) CreateUser(ctx context.Context, id int64, req *types.PostgresCreateUserRequest) error {
@@ -899,14 +848,6 @@ func (c *controller) CreateUser(ctx context.Context, id int64, req *types.Postgr
 	if len(req.Password) > 128 {
 		return apierrors.NewError(fmt.Errorf("password length exceeds limit 128"), http.StatusBadRequest)
 	}
-
-	dbConn, _, err := c.conn(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := pgOpContext(ctx)
-	defer cancel()
 
 	var opts []string
 	if req.SuperUser {
@@ -941,10 +882,7 @@ func (c *controller) CreateUser(ctx context.Context, id int64, req *types.Postgr
 		strings.ReplaceAll(req.Password, "'", "''"),
 		strings.Join(opts, " "))
 
-	if _, err := dbConn.ExecContext(ctx, stmt); err != nil {
-		return wrapPgErr(err)
-	}
-	return nil
+	return c.execDDL(ctx, id, stmt)
 }
 
 func (c *controller) DeleteUser(ctx context.Context, id int64, name string) error {
@@ -955,19 +893,8 @@ func (c *controller) DeleteUser(ctx context.Context, id int64, name string) erro
 		return err
 	}
 
-	dbConn, _, err := c.conn(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := pgOpContext(ctx)
-	defer cancel()
-
 	stmt := fmt.Sprintf("DROP ROLE %s", pgQuoteIdent(name))
-	if _, err := dbConn.ExecContext(ctx, stmt); err != nil {
-		return wrapPgErr(err)
-	}
-	return nil
+	return c.execDDL(ctx, id, stmt)
 }
 
 func (c *controller) GrantRole(ctx context.Context, id int64, req *types.PostgresGrantRequest) error {
@@ -993,14 +920,6 @@ func (c *controller) GrantRole(ctx context.Context, id int64, req *types.Postgre
 	}
 	privStr := strings.Join(normalized, ", ")
 
-	dbConn, _, err := c.conn(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := pgOpContext(ctx)
-	defer cancel()
-
 	objType := strings.ToUpper(strings.TrimSpace(req.ObjectType))
 	if objType == "" {
 		objType = "TABLE"
@@ -1019,10 +938,7 @@ func (c *controller) GrantRole(ctx context.Context, id int64, req *types.Postgre
 			privStr, req.Object, pgQuoteIdent(req.User))
 	}
 
-	if _, err := dbConn.ExecContext(ctx, stmt); err != nil {
-		return wrapPgErr(err)
-	}
-	return nil
+	return c.execDDL(ctx, id, stmt)
 }
 
 // ── 慢查询 ───────────────────────────────────────────────────

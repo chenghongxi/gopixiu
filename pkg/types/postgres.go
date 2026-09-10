@@ -113,6 +113,7 @@ type PostgresTableDetail struct {
 	DDL         string               `json:"ddl"`
 	Rows        int64                `json:"rows"`
 	SizeBytes   int64                `json:"sizeBytes"`
+	RelKind     string               `json:"relKind,omitempty"`
 	Columns     []PostgresColumn     `json:"columns"`
 	Indexes     []PostgresIndex      `json:"indexes"`
 	ForeignKeys []PostgresForeignKey `json:"foreignKeys"`
