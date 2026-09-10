@@ -212,6 +212,7 @@ func ping(ctx context.Context, db *sql.DB, p *types.PostgresSourceConfig) *types
 	_ = db.QueryRowContext(ctx, "select current_setting('server_version')").Scan(&r.Version)
 	return r
 }
+
 // pgScanOne 执行单值查询并忽略错误（概览指标允许部分缺失）
 func pgScanOne(ctx context.Context, db *sql.DB, query string, dest ...any) {
 	_ = db.QueryRowContext(ctx, query).Scan(dest...)

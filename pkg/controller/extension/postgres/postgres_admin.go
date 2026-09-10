@@ -16,15 +16,15 @@ import (
 )
 
 const (
-	maxSQLBytes        = 65536  // 控制台单条 SQL 长度上限
-	defaultQueryLimit  = 500    // SELECT 结果缺省行数上限
-	maxQueryLimit      = 10000  // SELECT 结果最大行数上限
-	maxCellValueRunes  = 4096   // 结果单元格最大显示长度（rune）
-	maxBatchStatements = 50     // 批量执行单次最大语句条数
-	maxSlowPageSize    = 100    // 慢查询分页单页上限
-	defaultSlowPageSize = 20   // 慢查询缺省页大小
-	pgOpTimeout        = 10 * time.Second
-	pgQueryTimeout     = 30 * time.Second
+	maxSQLBytes         = 65536 // 控制台单条 SQL 长度上限
+	defaultQueryLimit   = 500   // SELECT 结果缺省行数上限
+	maxQueryLimit       = 10000 // SELECT 结果最大行数上限
+	maxCellValueRunes   = 4096  // 结果单元格最大显示长度（rune）
+	maxBatchStatements  = 50    // 批量执行单次最大语句条数
+	maxSlowPageSize     = 100   // 慢查询分页单页上限
+	defaultSlowPageSize = 20    // 慢查询缺省页大小
+	pgOpTimeout         = 10 * time.Second
+	pgQueryTimeout      = 30 * time.Second
 )
 
 // readOnlyKeywords 只读语句关键字
