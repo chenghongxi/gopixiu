@@ -10,7 +10,7 @@
 ## 体验账号
 ```bash
 https://console.cloud.pixiuio.com
-readonly  Pixiu123!
+readonly / Pixiu123!
 ```
 
 ## 高级特性
