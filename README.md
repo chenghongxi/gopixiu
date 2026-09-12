@@ -64,10 +64,6 @@ readonly / Pixiu123!
 - 离线安装：[deploy/offline](deploy/offline/README.md)
 - 升级：[deploy/upgrade](deploy/upgrade/README.md)
 
-### 访问与权限
-
-Pixiu 基于角色对资源访问进行控制。若使用权限受限的账号登录，可能无法查看或操作相应的集群资源，请先在"账号 / 角色"中分配所需权限。
-
 ## 增强代理
 
 - [DeployAgent](deploy/deploy-agent/README.md)：边缘节点在网络隔离的情况下通过驱动完成 Kubernetes 集群部署。
