@@ -57,11 +57,16 @@ readonly / Pixiu123!
 
 ## 快速开始
 
-- 手动安装：[install.md](install.md)
-- Kubernetes 安装：[deploy/pixiu](deploy/pixiu/README.md)
-- docker-compose 安装：[deploy/docker-compose](deploy/docker-compose/README.md)
-- 离线安装：[deploy/offline](deploy/offline/README.md)
-- 升级：[deploy/upgrade](deploy/upgrade/README.md)
+### 安装手册
+- [手动安装](install.md)
+- [kubernetes安装](deploy/pixiu/README.md)
+- [docker-compose安装](deploy/docker-compose/README.md)
+
+### 升级手册
+- [手动升级](deploy/upgrade/README.md)
+
+### 离线安装
+- [离线安装](deploy/offline/README.md)
 
 ## 增强代理
 
