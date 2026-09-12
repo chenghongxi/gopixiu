@@ -6,7 +6,6 @@
 [![Release][release-image]][release-url]
 [![License][license-image]][license-url]
 
-
 ## 体验账号
 ```bash
 https://console.cloud.pixiuio.com
@@ -69,22 +68,11 @@ readonly / Pixiu123!
 - [DeployAgent](deploy/deploy-agent/README.md)：边缘节点在网络隔离的情况下通过驱动完成 Kubernetes 集群部署。
 - [ClusterAgent](deploy/cluster-agent/README.md)：通过轻量 Sidecar 使控制面能够访问网络隔离环境下的集群 kube-apiserver。
 
-## 开发文档
-
-- [开发文档](docs/README.md)
-- [API 说明](docs/apis.md)
-- [数据库表结构](docs/sql.md)
-
 ## 参与交流
 
 - [go-learning](https://github.com/caoyingjunz/go-learning)：Go 学习分享
 - 搜索微信号 `yingjuncz`，备注（pixiu），验证通过会加入群聊
 - [bilibili](https://space.bilibili.com/3493104248162809?spm_id_from=333.1007.0.0)：技术分享
-
-## 常见问题
-
-- [FAQ](faq/README.md)
-- [etcd 指标为空](faq/etcd-metrics-empty.md)
 
 ## 许可证
 
