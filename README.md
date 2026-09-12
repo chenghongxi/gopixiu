@@ -13,7 +13,7 @@ https://console.cloud.pixiuio.com
 readonly  Pixiu123!
 ```
 
-## 特性
+## 高级特性
 
 - 厂商无关 / 通用的 Kubernetes 管理界面
 - 支持集群内部署，也支持本地手动 / docker-compose 部署
@@ -27,7 +27,7 @@ readonly  Pixiu123!
 - 增强代理：DeployAgent / ClusterAgent 支持网络隔离环境
 - 简洁现代的 UI
 
-## 截图
+## 功能展示
 
 <table>
   <tr>
