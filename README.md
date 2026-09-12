@@ -1,12 +1,17 @@
 # Pixiu
 
-Pixiu 是一个易用、可扩展的开源云原生容器管理平台。
-
-Pixiu 融合了传统 Web 控制台 / 仪表盘"列表与查看资源"的能力，并在此之上提供集群部署、多集群管理、中间件管理等增强功能。
+旨在提供一站式容器解决方案， 致力于为中小型企业打造私有环境的公有云丝滑体验。
 
 ![Build Status][build-url]
 [![Release][release-image]][release-url]
 [![License][license-image]][license-url]
+
+
+## 体验账号
+```bash
+https://console.cloud.pixiuio.com
+readonly  Pixiu123!
+```
 
 ## 特性
 
